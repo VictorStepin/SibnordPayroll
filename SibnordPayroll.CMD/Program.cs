@@ -1,39 +1,31 @@
 ﻿using SibnordPayroll.BL;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 
 namespace SibnordPayroll.CMD
 {
     class Program
     {
-        private const string EMPLOYEES_PATH = "Employees.csv";
-        private const string TIME_TRACKINGS_PATH = "TimeTrackings.csv";
-
-        private static List<Employee> employees;
-        private static List<TimeTracking> timeTrackings;
-
         private static Employee currentEmployee;
 
         static void Main(string[] args)
         {
             Console.WriteLine("Добро пожаловать в Sibnord Payroll.");
-            InitializeEmployeesList();
-            InitializeTimeTrackingList();
 
-            if (employees.Count == 0)
+            if (DataStorage.employees.Count == 0)
             {
                 Console.WriteLine("В программе нет ни одного пользователя.");
                 Console.WriteLine("(З)авести первого пользователя? Или (В)ыйти из программы?");
                 var key = Console.ReadKey().Key;
+                Console.SetCursorPosition(0, Console.CursorTop);
                 if (key == ConsoleKey.P)
                 {
-                    Console.SetCursorPosition(0, Console.CursorTop);
                     Console.Write("Введите ваше имя: ");
+                    
                     var firstEmployeeName = Console.ReadLine();
                     var firstEmployee = new Employee(firstEmployeeName);
-                    SaveEmployee(firstEmployee);
+                    DataStorage.SaveEmployee(firstEmployee);
+                    
                     SetCurrentEmployee(firstEmployeeName);
                 }
                 else if (key == ConsoleKey.D)
@@ -57,6 +49,7 @@ namespace SibnordPayroll.CMD
             Console.WriteLine("\nМЕНЮ");
             Console.WriteLine("1 - Добавить сотрудника");
             Console.WriteLine("2 - Добавить часы");
+            Console.WriteLine("3 - Сформировать отчет по сотрудникам за пероид");
             Console.WriteLine("0 - Выйти из программы");
 
             while (true)
@@ -64,11 +57,12 @@ namespace SibnordPayroll.CMD
                 Console.SetCursorPosition(0, Console.CursorTop);
 
                 var key = Console.ReadKey().Key;
+                Console.SetCursorPosition(0, Console.CursorTop);
                 if (key == ConsoleKey.NumPad1)
                 {
-                    Console.WriteLine("Введите имя нового сотрудника");
-                    var newEmployee = new Employee(Console.ReadLine());
-                    SaveEmployee(newEmployee);
+                    Console.Write("Введите имя нового сотрудника: ");
+
+                    DataStorage.SaveEmployee(new Employee(Console.ReadLine()));
                 }
                 else if (key == ConsoleKey.NumPad2)
                 {
@@ -76,27 +70,47 @@ namespace SibnordPayroll.CMD
                     var date = DateTime.Parse(Console.ReadLine());
 
                     Console.Write("Введите имя сотрудника: ");
-                    var employeeName = Console.ReadLine();
+                    var employeeToAddHours = DataStorage.EmployeeByName(Console.ReadLine());
+                    if (employeeToAddHours != null)
+                    {
+                        Console.Write("Введите количетво часов: ");
+                        var hours = int.Parse(Console.ReadLine());
 
-                    Console.Write("Введите количетво часов: ");
-                    var hours = int.Parse(Console.ReadLine());
+                        Console.Write("Введите описание: ");
+                        var description = Console.ReadLine();
 
-                    Console.Write("Введите описание: ");
-                    var description = Console.ReadLine();
+                        var newTimeTracking = new TimeTracking(date, employeeToAddHours, hours, description);
+                        DataStorage.SaveTimeTracking(newTimeTracking);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Сотрудника с таким именем нет в программе.");
+                    }
+                }
+                else if (key == ConsoleKey.NumPad3)
+                {
+                    Console.Write("Введите начало периода: ");
+                    var startDate = DateTime.Parse(Console.ReadLine());
 
-                    var newTimeTracking = new TimeTracking(date, employeeName, hours, description);
-                    SaveTimeTracking(newTimeTracking);
+                    Console.Write("Введите конец периода: ");
+                    var endDate = DateTime.Parse(Console.ReadLine());
+
+                    CreateAndShowGeneralReport(startDate, endDate);
                 }
                 else if (key == ConsoleKey.NumPad0)
                 {
                     Environment.Exit(0);
+                }
+                else
+                {
+                    Console.WriteLine("Введите корректный номер пункта меню.");
                 }
             }
         }
 
         private static void SetCurrentEmployee(string employeeName)
         {
-            foreach (var employee in employees)
+            foreach (var employee in DataStorage.employees)
             {
                 if (employeeName == employee.Name)
                 {
@@ -113,70 +127,74 @@ namespace SibnordPayroll.CMD
             }
         }
 
-        private static void InitializeEmployeesList()
+        private static void CreateAndShowGeneralReport(DateTime startDate, DateTime endDate)
         {
-            employees = new List<Employee>();
-
-            if (File.Exists(EMPLOYEES_PATH))
+            var timeTrackingsInPeriod = new List<TimeTracking>();
+            foreach (var timeTracking in DataStorage.timeTrackings)
             {
-                var employeesStrings = File.ReadAllLines(EMPLOYEES_PATH, Encoding.Default);
-                foreach (var employeeString in employeesStrings)
+                if (timeTracking.Date >= startDate && timeTracking.Date <= endDate)
                 {
-                    employees.Add(new Employee(employeeString));
+                    timeTrackingsInPeriod.Add(timeTracking);
                 }
+            }
+
+            if (timeTrackingsInPeriod.Count == 0)
+            {
+                Console.WriteLine("Не найдено документов учета времени за указанный период");
             }
             else
             {
-                File.Create(EMPLOYEES_PATH);
-            }
-        }
-
-        private static void InitializeTimeTrackingList()
-        {
-            timeTrackings = new List<TimeTracking>();
-
-            if (File.Exists(TIME_TRACKINGS_PATH))
-            {
-                var fileStrings = File.ReadAllLines(TIME_TRACKINGS_PATH, Encoding.Default);
-                foreach (var fileString in fileStrings)
+                Employee employeeToCalculate = null;
+                var hours = 0d;
+                int i = 0;
+                while (timeTrackingsInPeriod.Count > 0)
                 {
-                    var fieldsString = fileString.Split(';');
-                    var date = DateTime.Parse(fieldsString[0]);
-                    var employeeName = fieldsString[1];
-                    var hours = int.Parse(fieldsString[2]);
-                    var description = fieldsString[3];
-                    timeTrackings.Add(new TimeTracking(date, employeeName, hours, description));
+                    if (employeeToCalculate == null)
+                    {
+                        employeeToCalculate = timeTrackingsInPeriod[i].Employee;
+                    }
+                    else
+                    {
+                        if (employeeToCalculate == timeTrackingsInPeriod[i].Employee)
+                        {
+                            hours += timeTrackingsInPeriod[i].Hours;
+                            timeTrackingsInPeriod.RemoveAt(i);
+                            if (timeTrackingsInPeriod.Count == 1)
+                            {
+                                hours += timeTrackingsInPeriod[i].Hours;
+                                var estimate = CalculateTheEstimate(hours, employeeToCalculate.MonthRate);
+                                Console.WriteLine("{0} отработал {1} часов и заработал за период {2} руб.",
+                                          employeeToCalculate.Name,
+                                          hours,
+                                          estimate);
+                                break;
+                            }
+                        }
+                        else
+                        {
+                            i++;
+                        }
+                        
+                        if (i + 1 == timeTrackingsInPeriod.Count)
+                        {
+                            var estimate = CalculateTheEstimate(hours, employeeToCalculate.MonthRate);
+                            Console.WriteLine("{0} отработал {1} часов и заработал за период {2} руб.",
+                                      employeeToCalculate.Name,
+                                      hours,
+                                      estimate);
+
+                            employeeToCalculate = null;
+                            hours = 0d;
+                            i = 0;
+                        }
+                    }
                 }
             }
-            else
-            {
-                File.Create(TIME_TRACKINGS_PATH);
-            }
         }
 
-        private static void SaveEmployee(Employee employee)
+        private static decimal CalculateTheEstimate(double hours, decimal monthRate)
         {
-            employees.Add(employee);
-            using (var sw = new StreamWriter(EMPLOYEES_PATH, true, Encoding.Default))
-            {
-                sw.WriteLine(employee.Name);
-            }
-
-            Console.WriteLine("Пользоватль {0} создан.", employee);
-        }
-
-        private static void SaveTimeTracking(TimeTracking timeTracking)
-        {
-            timeTrackings.Add(timeTracking);
-            using (var sw = new StreamWriter(TIME_TRACKINGS_PATH, true, Encoding.Default))
-            {
-                sw.WriteLine("{0};{1};{2};{3}", timeTracking.Date, 
-                                                timeTracking.EmployeeName, 
-                                                timeTracking.Hours,
-                                                timeTracking.Description);
-            }
-
-            Console.WriteLine("Документ за {0} для сотрудника {1} успешно создан.", timeTracking.Date, timeTracking.EmployeeName);
+            return (decimal)hours / 160m * monthRate;
         }
     }
 }
