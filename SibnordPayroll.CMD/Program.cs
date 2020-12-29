@@ -50,6 +50,7 @@ namespace SibnordPayroll.CMD
             Console.WriteLine("1 - Добавить сотрудника");
             Console.WriteLine("2 - Добавить часы");
             Console.WriteLine("3 - Сформировать отчет по сотрудникам за пероид");
+            Console.WriteLine("4 - Сформировать отчет по сотруднику за пероид");
             Console.WriteLine("0 - Выйти из программы");
 
             while (true)
@@ -96,6 +97,19 @@ namespace SibnordPayroll.CMD
                     var endDate = DateTime.Parse(Console.ReadLine());
 
                     CreateAndShowGeneralReport(startDate, endDate);
+                }
+                else if (key == ConsoleKey.NumPad4)
+                {
+                    Console.Write("Введите имя сотрудника: ");
+                    var employeeName = Console.ReadLine();
+
+                    Console.Write("Введите начало периода: ");
+                    var startDate = DateTime.Parse(Console.ReadLine());
+
+                    Console.Write("Введите конец периода: ");
+                    var endDate = DateTime.Parse(Console.ReadLine());
+
+                    CreateAndShowEmployeeReport(employeeName, startDate, endDate);
                 }
                 else if (key == ConsoleKey.NumPad0)
                 {
@@ -189,6 +203,53 @@ namespace SibnordPayroll.CMD
                         }
                     }
                 }
+            }
+        }
+
+        private static void CreateAndShowEmployeeReport(string employeeName, DateTime startDate, DateTime endDate)
+        {
+            var employeeToCalculate = DataStorage.EmployeeByName(employeeName);
+
+            if (employeeToCalculate != null)
+            {
+                var timeTrackingsInPeriod = new List<TimeTracking>();
+                foreach (var timeTracking in DataStorage.timeTrackings)
+                {
+                    if (timeTracking.Date >= startDate &&
+                        timeTracking.Date <= endDate &&
+                        timeTracking.Employee == employeeToCalculate)
+                    {
+                        timeTrackingsInPeriod.Add(timeTracking);
+                    }
+                }
+
+                if (timeTrackingsInPeriod.Count == 0)
+                {
+                    Console.WriteLine("Не найдено документов учета времени за указанный период");
+                }
+                else
+                {
+                    Console.WriteLine("Отчет по сотруднику: {0} за период за период с {1} по {2}",
+                                  employeeToCalculate,
+                                  startDate,
+                                  endDate);
+                    
+                    var hours = 0d;
+                    foreach (var timeTracking in timeTrackingsInPeriod)
+                    {
+                        hours += timeTracking.Hours;
+                        Console.WriteLine("{0}, {1} часов, {2}", 
+                                          timeTracking.Date.ToShortDateString(),
+                                          timeTracking.Hours,
+                                          timeTracking.Description);
+                    }
+                    var estimate = CalculateTheEstimate(hours, employeeToCalculate.MonthRate);
+                    Console.WriteLine("Итого: {0} часов, заработано: {1} руб", hours, estimate);
+                }
+            }
+            else
+            {
+                Console.WriteLine("Такого сотрудника нет в программе.");
             }
         }
 
